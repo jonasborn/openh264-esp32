@@ -1,0 +1,57 @@
+name: ESP-IDF build
+
+on:
+  push:
+    branches: [esp32-xtensa-port, master]
+    paths:
+      - 'codec/**'
+      - 'CMakeLists.txt'
+      - 'idf_component.yml'
+      - 'ci/**'
+      - '.github/workflows/esp32-idf-build.yml'
+  pull_request:
+    paths:
+      - 'codec/**'
+      - 'CMakeLists.txt'
+      - 'idf_component.yml'
+      - 'ci/**'
+      - '.github/workflows/esp32-idf-build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.target }} / IDF ${{ matrix.idf }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        idf: ["release-v5.3", "release-v5.4"]
+        target: ["esp32s3", "esp32"]
+        include:
+          - idf: "release-v5.4"
+            target: "esp32p4"
+    steps:
+      - uses: actions/checkout@v4
+
+      # Stage the repo as an ESP-IDF component named "openh264", exactly as a
+      # consumer would place it at components/openh264.
+      - name: Stage component
+        run: |
+          mkdir -p ci/smoke/components/openh264
+          cp -r codec CMakeLists.txt idf_component.yml LICENSE NOTICE \
+                ci/smoke/components/openh264/
+
+      - name: Build decoder smoke test
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: ${{ matrix.idf }}
+          target: ${{ matrix.target }}
+          path: ci/smoke
+
+      - name: Report library size
+        if: always()
+        run: |
+          {
+            echo "### ${{ matrix.target }} / IDF ${{ matrix.idf }}"
+            find ci/smoke/build -name 'libopenh264.a' -exec ls -lh {} \; || true
+          } >> "$GITHUB_STEP_SUMMARY"
