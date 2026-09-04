@@ -1,11 +1,11 @@
-version: "2.6.0-esp1"
+version: "2.6.0-esp2"
 description: >-
   OpenH264 decoder (H.264 Baseline / Main / High profile) as an ESP-IDF
   component for the ESP32 family. Portable C only, no assembly. Community
   fork of cisco/openh264 with a small Xtensa / ESP-IDF port.
 url: "https://github.com/jonasborn/openh264-esp32"
 repository: "https://github.com/jonasborn/openh264-esp32.git"
-documentation: "https://github.com/jonasborn/openh264-esp32/tree/esp32-xtensa-port#readme"
+documentation: "https://github.com/jonasborn/openh264-esp32/tree/master#readme"
 license: "BSD-2-Clause"
 tags:
   - h264

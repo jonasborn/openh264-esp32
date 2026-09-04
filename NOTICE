@@ -2,9 +2,9 @@ openh264-esp32 — community fork of Cisco's OpenH264
 ==================================================
 
 This repository is a community fork of https://github.com/cisco/openh264.
-It adds a small ESP32 / ESP-IDF port of the decoder (see README.md and the
-`esp32-xtensa-port` branch). The OpenH264 source, and the changes in this
-fork, are licensed under the 2-clause BSD license (see LICENSE).
+It adds a small ESP32 / ESP-IDF port of the decoder (see README.md). The
+OpenH264 source, and the changes in this fork, are licensed under the
+2-clause BSD license (see LICENSE).
 
 Not the Cisco binary
 -------------------

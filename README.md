@@ -2,7 +2,7 @@
 
 **H.264 decoding — Baseline, Main *and* High profile — on the ESP32, built from source, no assembly.**
 
-[![ESP-IDF build](https://github.com/jonasborn/openh264-esp32/actions/workflows/esp32-idf-build.yml/badge.svg?branch=esp32-xtensa-port)](https://github.com/jonasborn/openh264-esp32/actions/workflows/esp32-idf-build.yml)
+[![ESP-IDF build](https://github.com/jonasborn/openh264-esp32/actions/workflows/esp32-idf-build.yml/badge.svg?branch=master)](https://github.com/jonasborn/openh264-esp32/actions/workflows/esp32-idf-build.yml)
 
 This is a community fork of [cisco/openh264](https://github.com/cisco/openh264) that adds a
 small **ESP32 / ESP-IDF port of the decoder**. It is packaged as a drop-in ESP-IDF
@@ -10,7 +10,9 @@ component. The codec itself is unmodified upstream code — see
 [*What changed*](#what-changed) for the complete (tiny) patch set, and
 [`README.upstream.md`](README.upstream.md) for the original OpenH264 readme.
 
-> Everything here is on the **`esp32-xtensa-port`** branch, based on the upstream **`v2.6.0`** tag.
+> `master` tracks upstream [cisco/openh264](https://github.com/cisco/openh264) and carries
+> the ESP-IDF port on top. The port was developed and hardware-verified against the
+> `v2.6.0` line.
 
 ---
 
@@ -53,7 +55,7 @@ Add the repo to your project as a component:
 
 ```bash
 cd your-project
-git submodule add -b esp32-xtensa-port https://github.com/jonasborn/openh264-esp32 components/openh264
+git submodule add https://github.com/jonasborn/openh264-esp32 components/openh264
 ```
 
 Require it from your component:
@@ -190,7 +192,7 @@ C only.
   decoder single-threaded.
 
 <a name="what-changed"></a>
-## What changed vs. upstream `v2.6.0`
+## What changed vs. upstream
 
 New files (build glue, not codec changes): `CMakeLists.txt`, `idf_component.yml`,
 `NOTICE`, `ci/`, `.github/workflows/esp32-idf-build.yml`, this `README.md`
