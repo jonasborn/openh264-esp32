@@ -1,0 +1,4 @@
+# Enough main-task stack for the decoder; PSRAM is optional (WelsMalloc falls
+# back to internal malloc when MALLOC_CAP_SPIRAM is unavailable).
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+CONFIG_COMPILER_OPTIMIZATION_PERF=y

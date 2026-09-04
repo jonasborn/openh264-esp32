@@ -1,229 +1,236 @@
-ESP32 fork (esp32-xtensa-port branch)
-=====================================
-This fork adds the minimal source changes needed to build and run the **openh264
-decoder on the ESP32** (Xtensa, ESP-IDF), with no assembly — the portable C paths only.
-Branch ``esp32-xtensa-port`` is based on the ``v2.6.0`` tag.
+# openh264-esp32
 
-**Verified on hardware:** ESP32-S3 (ESP32-S3-PICO-1, 8 MB octal PSRAM), ESP-IDF 6.0,
-decoding a 640x360 **H.264 High Profile** IDR keyframe from an IP camera to I420 in
-~400 ms, then JPEG-encoding on-device. Baseline..High profile all decode.
+**H.264 decoding — Baseline, Main *and* High profile — on the ESP32, built from source, no assembly.**
 
-Changes (3 files, all ESP-only paths guarded by ``#if defined(ESP_PLATFORM)``):
+[![ESP-IDF build](https://github.com/jonasborn/openh264-esp32/actions/workflows/esp32-idf-build.yml/badge.svg?branch=esp32-xtensa-port)](https://github.com/jonasborn/openh264-esp32/actions/workflows/esp32-idf-build.yml)
 
-- ``codec/common/src/WelsThreadLib.cpp`` - no ``<sys/sysctl.h>`` on newlib; skip
-  ``pthread_attr_setscope``/``setschedpolicy`` (absent from ESP-IDF pthread, and the
-  decoder is single-threaded here anyway); ``WelsQueryLogicalProcessInfo`` returns 1.
-- ``codec/common/src/memory_align.cpp`` - ``WelsMalloc`` uses
-  ``heap_caps_malloc(MALLOC_CAP_SPIRAM)`` so the decoder's ~2-3 MB working set lives in
-  PSRAM instead of the small internal DMA heap.
-- ``codec/decoder/core/src/decoder_core.cpp`` - ``ExpandBsBuffer`` /
-  ``ExpandBsLenBuffer`` definitions used bare ``int`` where the header declares
-  ``int32_t``; on toolchains where ``int32_t`` is ``long`` this is a C++ name-mangling
-  mismatch and fails to link. (Upstream bug, still present on master.)
+This is a community fork of [cisco/openh264](https://github.com/cisco/openh264) that adds a
+small **ESP32 / ESP-IDF port of the decoder**. It is packaged as a drop-in ESP-IDF
+component. The codec itself is unmodified upstream code — see
+[*What changed*](#what-changed) for the complete (tiny) patch set, and
+[`README.upstream.md`](README.upstream.md) for the original OpenH264 readme.
 
-Nothing in the decode logic (CABAC, transforms, intra prediction, deblocking) is
-touched. Build it as an ESP-IDF component: compile ``codec/decoder/{core,plus}/src/*.cpp``
-and ``codec/common/src/*.cpp``, include dirs ``codec/api/wels``, ``codec/common/inc``,
-``codec/decoder/core/inc``, ``codec/decoder/plus/inc``, no ``-DX86_ASM`` / ``-DHAVE_NEON*``.
-Feed the decoder one NAL per ``DecodeFrameNoDelay`` call, then ``FlushFrame()`` to pull
-the finished picture.
+> Everything here is on the **`esp32-xtensa-port`** branch, based on the upstream **`v2.6.0`** tag.
 
---------------------------------------------------------------------------------
+---
 
-OpenH264
-========
-OpenH264 is a codec library which supports H.264 encoding and decoding. It is suitable for use in real time applications such as WebRTC. See http://www.openh264.org/ for more details.
+## Why this exists
 
-Encoder Features
-----------------
-- Constrained Baseline Profile up to Level 5.2 (Max frame size is 36864 macro-blocks)
-- Arbitrary resolution, not constrained to multiples of 16x16
-- Rate control with adaptive quantization, or constant quantization
-- Slice options: 1 slice per frame, N slices per frame, N macroblocks per slice, or N bytes per slice
-- Multiple threads automatically used for multiple slices
-- Temporal scalability up to 4 layers in a dyadic hierarchy
-- Simulcast AVC up to 4 resolutions from a single input
-- Spatial simulcast up to 4 resolutions from a single input
-- Long Term Reference (LTR) frames
-- Memory Management Control Operation (MMCO)
-- Reference picture list modification
-- Single reference frame for inter prediction
-- Multiple reference frames when using LTR and/or 3-4 temporal layers
-- Periodic and on-demand Instantaneous Decoder Refresh (IDR) frame insertion
-- Dynamic changes to bit rate, frame rate, and resolution
-- Annex B byte stream output
-- YUV 4:2:0 planar input
+The H.264 decoders normally available on the ESP32 —
+[`espressif/esp_h264`](https://components.espressif.com/components/espressif/esp_h264)
+and the tinyH264 it is built on — implement **Constrained Baseline profile only**. The
+moment they meet a **Main** or **High** profile stream (which is what essentially every
+IP camera, phone and hardware encoder produces) they bail out at the SPS:
 
-Decoder Features
-----------------
-- Constrained Baseline Profile up to Level 5.2 (Max frame size is 36864 macro-blocks)
-- Arbitrary resolution, not constrained to multiples of 16x16
-- Single thread for all slices
-- Long Term Reference (LTR) frames
-- Memory Management Control Operation (MMCO)
-- Reference picture list modification
-- Multiple reference frames when specified in Sequence Parameter Set (SPS)
-- Annex B byte stream input
-- YUV 4:2:0 planar output
-
-OS Support
-----------
-- Windows 64-bit and 32-bit
-- Mac OS X 64-bit and 32-bit
-- Mac OS X ARM64
-- Linux 64-bit and 32-bit
-- Android 64-bit and 32-bit
-- iOS 64-bit and 32-bit
-- Windows Phone 32-bit
-
-Architectures verified to be working
-----------
-- ppc64el
-
-Processor Support
------------------
-- Intel x86 optionally with MMX/SSE (no AVX yet, help is welcome)
-- ARMv7 optionally with NEON, AArch64 optionally with NEON
-- Any architecture using C/C++ fallback functions
-
-Building the Library
---------------------
-NASM needed to be installed for assembly code: workable version 2.10.06 or above, NASM can be downloaded from http://www.nasm.us/.
-For Mac OSX 64-bit NASM needed to be below version 2.11.08 as NASM 2.11.08 will introduce error when using RIP-relative addresses in Mac OSX 64-bit
-
-To build the arm assembly for Windows Phone, gas-preprocessor is required. It can be downloaded from git://git.libav.org/gas-preprocessor.git
-
-For Android Builds
-------------------
-To build for android platform, You need to install android sdk and ndk. You also need to export `**ANDROID_SDK**/tools` to PATH. On Linux, this can be done by
-
-    export PATH=**ANDROID_SDK**/tools:$PATH
-
-The codec and demo can be built by
-
-    make OS=android NDKROOT=**ANDROID_NDK** TARGET=**ANDROID_TARGET**
-
-Valid `**ANDROID_TARGET**` can be found in `**ANDROID_SDK**/platforms`, such as `android-12`.
-You can also set `ARCH`, `NDKLEVEL` according to your device and NDK version.
-`ARCH` specifies the architecture of android device. Currently `arm`, `arm64`, `x86` and `x86_64` are supported, the default is `arm`. (`mips` and `mips64` can also be used, but there's no specific optimization for those architectures.)
-`NDKLEVEL` specifies android api level, the default is 12. Available possibilities can be found in `**ANDROID_NDK**/platforms`, such as `android-21` (strip away the `android-` prefix).
-
-By default these commands build for the `armeabi-v7a` ABI. To build for the other android
-ABIs, add `ARCH=arm64`, `ARCH=x86`, `ARCH=x86_64`, `ARCH=mips` or `ARCH=mips64`.
-To build for the older `armeabi` ABI (which has armv5te as baseline), add `APP_ABI=armeabi` (`ARCH=arm` is implicit).
-To build for 64-bit ABI, such as `arm64`, explicitly set `NDKLEVEL` to 21 or higher.
-
-For iOS Builds
---------------
-You can build the libraries and demo applications using xcode project files
-located in `codec/build/iOS/dec` and `codec/build/iOS/enc`.
-
-You can also build the libraries (but not the demo applications) using the
-make based build system from the command line. Build with
-
-    make OS=ios ARCH=**ARCH**
-
-Valid values for `**ARCH**` are the normal iOS architecture names such as
-`armv7`, `armv7s`, `arm64`, and `i386` and `x86_64` for the simulator.
-Another settable iOS specific parameter
-is `SDK_MIN`, specifying the minimum deployment target for the built library.
-For other details on building using make on the command line, see
-'For All Platforms' below.
-
-For Linux Builds
---------------
-
-You can build the libraries (but not the demo applications) using the
-make based build system from the command line. Build with
-
-    make OS=linux ARCH=**ARCH**
-
- You can set `ARCH` according to your linux device .
-`ARCH` specifies the architecture of the device. Currently `arm`, `arm64`, `x86` and `x86_64` are supported   
-
- NOTICE:
- 	If your computer is x86 architecture, for build the libnary which be used on arm/aarch64 machine, you may need to use cross-compiler, for example:
- 		make OS=linux CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ ARCH=arm64
-   		 or
-    	make OS=linux CC=arm-linux-gnueabi-gcc CXX=arm-linux-gnueabi-g++ ARCH=arm
-
-
-For Windows Builds
-------------------
-
-"make" must be installed. It is recommended to install the Cygwin and "make" must be selected to be included in the installation. After the installation, please add the Cygwin bin path to your PATH.
-
-openh264/build/AutoBuildForWindows.bat is provided to help compile the libraries on Windows platform.  
-Usage of the .bat script:  
-
-    `AutoBuildForWindows.bat Win32-Release-ASM` for x86 Release build  
-    `AutoBuildForWindows.bat Win64-Release-ASM` for x86_64 Release build  
-    `AutoBuildForWindows.bat ARM64-Release-ASM` for arm64 release build  
-for more usage, please refer to the .bat script help.  
-
-For All Platforms
--------------------
-
-Using make
-----------
-
-From the main project directory:
-- `make` for automatically detecting architecture and building accordingly
-- `make ARCH=i386` for x86 32-bit builds
-- `make ARCH=x86_64` for x86 64-bit builds
-- `make ARCH=arm64` for arm64 Mac 64-bit builds
-- `make V=No` for a silent build (not showing the actual compiler commands)
-- `make DEBUGSYMBOLS=True` for two libraries, one is normal libraries, another one is removed the debugging symbol table entries (those created by the -g option)
-
-The command line programs `h264enc` and `h264dec` will appear in the main project directory.
-
-A shell script to run the command-line apps is in `testbin/CmdLineExample.sh`
-
-Usage information can be found in `testbin/CmdLineReadMe`
-
-Using meson
------------
-
-Meson build definitions have been added, and are known to work on Linux
-and Windows, for x86 and x86 64-bit.
-
-See <http://mesonbuild.com/Installing.html> for instructions on how to
-install meson, then:
-
-``` shell
-meson setup builddir
-ninja -C builddir
+```
+H264_DEC: profile_idc is error
+H264_DEC: Decode sequence parameter set error.
 ```
 
-Run the tests with:
+The ESP32-S3 has **no hardware H.264 decoder** (that arrived with the ESP32-P4). So to
+decode a real-world High-profile stream on an S3 you need a full software decoder.
+OpenH264 is one — it just was never packaged for ESP-IDF or built without its x86/ARM
+assembly. This fork does both.
 
-``` shell
-meson test -C builddir -v
+## Verified on hardware
+
+| | |
+|---|---|
+| Board | ESP32-S3 (ESP32-S3-PICO-1, 8 MB octal PSRAM) |
+| Toolchain | ESP-IDF 6.0, `xtensa-esp-elf` GCC 15 |
+| Stream | Tapo C100 RTSP substream — **H.264 High profile**, `profile-level-id=640016`, 640×360 |
+| Decode | one IDR keyframe → I420 in **~400 ms** |
+| Then | JPEG-encoded on-device (`esp_new_jpeg`) → full frame in **~0.6 s** |
+
+Baseline, Main and High profile bitstreams all decode. CABAC and CAVLC, 4×4 and 8×8
+transforms, scaling matrices, deblocking — all upstream, all unmodified.
+
+---
+
+## Quick start (ESP-IDF component)
+
+Add the repo to your project as a component:
+
+```bash
+cd your-project
+git submodule add -b esp32-xtensa-port https://github.com/jonasborn/openh264-esp32 components/openh264
 ```
 
-Install with:
+Require it from your component:
 
-``` shell
-ninja -C builddir install
+```cmake
+# main/CMakeLists.txt
+idf_component_register(SRCS "app_main.c"
+                       REQUIRES openh264)
 ```
 
-Using the Source
-----------------
-- `codec` - encoder, decoder, console (test app), build (makefile, vcproj)
-- `build` - scripts for Makefile build system
-- `test` - GTest unittest files
-- `testbin` - autobuild scripts, test app config files
-- `res` - yuv and bitstream test files
+Include the API (the component puts `codec/api/wels` on your include path):
 
-Known Issues
-------------
-See the issue tracker on https://github.com/cisco/openh264/issues
-- Encoder errors when resolution exceeds 3840x2160
-- Encoder errors when compressed frame size exceeds half uncompressed size
-- Decoder errors when compressed frame size exceeds 1MB
-- Encoder RC requires frame skipping to be enabled to hit the target bitrate,
-  if frame skipping is disabled the target bitrate may be exceeded
+```c
+#include "codec_api.h"
+```
 
-License
--------
-BSD, see `LICENSE` file for details.
+That is all the wiring. `pio run` / `idf.py build` compiles ~37 decoder + common
+`.cpp` files into `libopenh264.a` (adds roughly **170 KB** to the final image).
+
+## Decoding a keyframe → I420
+
+OpenH264's no-delay path wants **one NAL per call**, and it holds the finished picture
+in its reorder buffer until you pull it with `FlushFrame()`. Both are easy to get wrong,
+so here is the whole dance:
+
+```cpp
+#include "codec_api.h"
+#include "codec_app_def.h"
+
+// annexb = SPS + PPS + IDR, each prefixed with 00 00 00 01 (or 00 00 01)
+bool decode_keyframe(const uint8_t *annexb, int len,
+                     const uint8_t **Y, const uint8_t **U, const uint8_t **V,
+                     int *w, int *h, int *y_stride, int *c_stride)
+{
+    ISVCDecoder *dec = nullptr;
+    if (WelsCreateDecoder(&dec) != 0 || !dec) return false;
+
+    SDecodingParam p{};
+    p.uiTargetDqLayer             = (unsigned char)-1;
+    p.eEcActiveIdc                = ERROR_CON_SLICE_MV_COPY_CROSS_IDR_FREEZE_RES_CHANGE;
+    p.sVideoProperty.size         = sizeof(p.sVideoProperty);
+    p.sVideoProperty.eVideoBsType = VIDEO_BITSTREAM_AVC;
+    if (dec->Initialize(&p) != 0) { WelsDestroyDecoder(dec); return false; }
+
+    uint8_t   *planes[3] = {};
+    SBufferInfo info{};
+
+    // 1. feed NAL by NAL
+    for (int i = 0; i + 4 <= len && info.iBufferStatus != 1; ) {
+        int sc = (annexb[i+2] == 1) ? 3 : 4;               // start-code length
+        int j  = i + sc;
+        while (j + 3 <= len && !(annexb[j] == 0 && annexb[j+1] == 0 &&
+              (annexb[j+2] == 1 || (annexb[j+2] == 0 && annexb[j+3] == 1)))) j++;
+        if (j + 3 > len) j = len;                          // last NAL to the end
+        planes[0] = planes[1] = planes[2] = nullptr;
+        info = {};
+        dec->DecodeFrameNoDelay(annexb + i, j - i, planes, &info);
+        i = j;
+    }
+
+    // 2. the frame is decoded but buffered - flush it out
+    if (info.iBufferStatus != 1) {
+        int32_t eos = 1;
+        dec->SetOption(DECODER_OPTION_END_OF_STREAM, &eos);
+        for (int k = 0; k < 4 && info.iBufferStatus != 1; k++) {
+            planes[0] = planes[1] = planes[2] = nullptr;
+            info = {};
+            dec->FlushFrame(planes, &info);
+        }
+    }
+
+    bool ok = info.iBufferStatus == 1 && planes[0];
+    if (ok) {
+        *Y = planes[0]; *U = planes[1]; *V = planes[2];
+        *w = info.UsrData.sSystemBuffer.iWidth;
+        *h = info.UsrData.sSystemBuffer.iHeight;
+        *y_stride = info.UsrData.sSystemBuffer.iStride[0];  // NOTE: >= width
+        *c_stride = info.UsrData.sSystemBuffer.iStride[1];
+    }
+    dec->Uninitialize();
+    WelsDestroyDecoder(dec);
+    return ok;
+}
+```
+
+The planes are **stride-padded** (e.g. a 640-wide frame comes back with `iStride[0] == 704`);
+copy row by row if your consumer wants tight `width*height` data.
+
+## PSRAM
+
+The decoder's working set for a 640×360 frame is **~2–3 MB** (reference frames + scratch).
+This fork routes OpenH264's `WelsMalloc` through
+`heap_caps_malloc(MALLOC_CAP_SPIRAM)` so it lands in PSRAM and never competes with WiFi
+for the small internal DMA heap. If the chip has no PSRAM it falls back to `malloc`
+(you then need enough internal RAM, i.e. only small frames).
+
+Enable PSRAM in your `sdkconfig` as usual (`CONFIG_SPIRAM=y` + the correct
+`CONFIG_SPIRAM_MODE_*` for your module — **octal** for N8R8 / S3-PICO-1, quad for R2).
+
+## Performance & footprint
+
+| | 640×360 High profile IDR, ESP32-S3 @ 240 MHz |
+|---|---|
+| Decode to I420 | ~400 ms |
+| Peak heap (PSRAM) | ~3 MB during decode, freed after |
+| Flash added | ~170 KB (`libopenh264.a`, decoder + common, `-O2`) |
+| Internal RAM added | negligible (buffers go to PSRAM) |
+
+Single keyframe / periodic-snapshot use is comfortable. Real-time video is not the goal
+of a pure-software decoder on a 240 MHz core.
+
+## Supported targets
+
+CI builds the decoder for every push:
+
+| Target | Arch | IDF 5.3 | IDF 5.4 |
+|---|---|:-:|:-:|
+| `esp32s3` | Xtensa LX7 | ✅ | ✅ |
+| `esp32`   | Xtensa LX6 | ✅ | ✅ |
+| `esp32p4` | RISC-V     | –  | ✅ |
+
+The port is plain portable C/C++; other targets should work but aren't in the matrix.
+
+## What's included / not included
+
+**Included:** the OpenH264 **decoder** (`codec/decoder/**`) + `codec/common/**`, portable
+C only.
+
+**Not included / not wired:**
+- **Encoder.** OpenH264's encoder is here in the tree but not in the component; it is
+  Constrained-Baseline-only by design and outside this fork's scope.
+- **Assembly / SIMD.** X86 and NEON paths are compiled out; scalar C only.
+- **Multi-threaded decode.** `WelsQueryLogicalProcessInfo` reports 1 core; run the
+  decoder single-threaded.
+
+<a name="what-changed"></a>
+## What changed vs. upstream `v2.6.0`
+
+New files (build glue, not codec changes): `CMakeLists.txt`, `idf_component.yml`,
+`NOTICE`, `ci/`, `.github/workflows/esp32-idf-build.yml`, this `README.md`
+(original kept as `README.upstream.md`).
+
+Source changes — **3 files, 7 hunks**, every platform path guarded by
+`#if defined(ESP_PLATFORM)`:
+
+| File | Change |
+|---|---|
+| `codec/common/src/WelsThreadLib.cpp` | ① don't `#include <sys/sysctl.h>` (not in newlib) ② skip `pthread_attr_setscope` / `setschedpolicy` (absent from ESP-IDF pthread; decoder is single-threaded here anyway) ③ `WelsQueryLogicalProcessInfo` → `ProcessorCount = 1` |
+| `codec/common/src/memory_align.cpp` | `WelsMalloc` allocates via `heap_caps_malloc(MALLOC_CAP_SPIRAM)` (falls back to `malloc`) |
+| `codec/decoder/core/src/decoder_core.cpp` | `ExpandBsBuffer` / `ExpandBsLenBuffer` **definitions** used bare `int` where `decoder_core.h` declares `int32_t`. On toolchains where `int32_t` is `long` (`xtensa-esp-elf`) the C++ mangled names don't match the call sites → link failure. **This is an upstream bug**, still present on `master`. |
+
+Nothing in the decode logic (CABAC, transforms, intra prediction, deblocking) is touched.
+
+## Building the smoke test locally
+
+```bash
+cd ci/smoke
+idf.py set-target esp32s3
+idf.py build
+```
+
+It creates a decoder, `Initialize()`s and tears it down — a link + init check for the
+component on your target. A full bitstream example is the snippet above.
+
+## Licensing
+
+OpenH264 source is **BSD-2-Clause** (`LICENSE`, © 2013 Cisco Systems). This fork's
+changes are under the same licence.
+
+**Community build — please read [`NOTICE`](NOTICE).** In short: a build made from this
+source is *not* the binary module Cisco distributes from openh264.org, and Cisco's
+patent-pool royalty arrangement for that module does not extend to it. H.264 is
+patent-encumbered; the BSD licence grants no patent rights. If you ship an H.264 decoder
+built from this source, determining and obtaining any required patent licence for your
+product and territory is on you. No patent grant, no legal advice is offered here.
+
+## Credits
+
+- **OpenH264** — Cisco Systems and the OpenH264 contributors. All decoding is their work.
+- ESP-IDF port — this fork.
