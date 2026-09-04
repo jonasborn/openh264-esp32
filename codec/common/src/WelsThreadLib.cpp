@@ -50,6 +50,8 @@
 #include <unistd.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten/threading.h>
+#elif defined(ESP_PLATFORM)
+/* ESP-IDF newlib has no <sys/sysctl.h>; CPU count handled below */
 #elif !defined(__Fuchsia__)
 #include <sys/sysctl.h>
 #endif
@@ -236,7 +238,7 @@ WELS_THREAD_ERROR_CODE    WelsThreadCreate (WELS_THREAD_HANDLE* thread,  LPWELS_
   err = pthread_attr_init (&at);
   if (err)
     return err;
-#if !defined(__ANDROID__) && !defined(__Fuchsia__)
+#if !defined(__ANDROID__) && !defined(__Fuchsia__) && !defined(ESP_PLATFORM)
   err = pthread_attr_setscope (&at, PTHREAD_SCOPE_SYSTEM);
   if (err)
     return err;
@@ -482,7 +484,10 @@ WELS_THREAD_ERROR_CODE    WelsMultipleEventsWaitSingleBlocking (uint32_t nCount,
 }
 
 WELS_THREAD_ERROR_CODE    WelsQueryLogicalProcessInfo (WelsLogicalProcessInfo* pInfo) {
-#ifdef ANDROID_NDK
+#if defined(ESP_PLATFORM)
+  pInfo->ProcessorCount = 1;   /* decoder runs single-threaded here */
+  return WELS_THREAD_ERROR_OK;
+#elif defined(ANDROID_NDK)
   pInfo->ProcessorCount = android_getCpuCount();
   return WELS_THREAD_ERROR_OK;
 #elif defined(__linux__) || defined(__GNU__)

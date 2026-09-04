@@ -1,3 +1,35 @@
+ESP32 fork (esp32-xtensa-port branch)
+=====================================
+This fork adds the minimal source changes needed to build and run the **openh264
+decoder on the ESP32** (Xtensa, ESP-IDF), with no assembly — the portable C paths only.
+Branch ``esp32-xtensa-port`` is based on the ``v2.6.0`` tag.
+
+**Verified on hardware:** ESP32-S3 (ESP32-S3-PICO-1, 8 MB octal PSRAM), ESP-IDF 6.0,
+decoding a 640x360 **H.264 High Profile** IDR keyframe from an IP camera to I420 in
+~400 ms, then JPEG-encoding on-device. Baseline..High profile all decode.
+
+Changes (3 files, all ESP-only paths guarded by ``#if defined(ESP_PLATFORM)``):
+
+- ``codec/common/src/WelsThreadLib.cpp`` - no ``<sys/sysctl.h>`` on newlib; skip
+  ``pthread_attr_setscope``/``setschedpolicy`` (absent from ESP-IDF pthread, and the
+  decoder is single-threaded here anyway); ``WelsQueryLogicalProcessInfo`` returns 1.
+- ``codec/common/src/memory_align.cpp`` - ``WelsMalloc`` uses
+  ``heap_caps_malloc(MALLOC_CAP_SPIRAM)`` so the decoder's ~2-3 MB working set lives in
+  PSRAM instead of the small internal DMA heap.
+- ``codec/decoder/core/src/decoder_core.cpp`` - ``ExpandBsBuffer`` /
+  ``ExpandBsLenBuffer`` definitions used bare ``int`` where the header declares
+  ``int32_t``; on toolchains where ``int32_t`` is ``long`` this is a C++ name-mangling
+  mismatch and fails to link. (Upstream bug, still present on master.)
+
+Nothing in the decode logic (CABAC, transforms, intra prediction, deblocking) is
+touched. Build it as an ESP-IDF component: compile ``codec/decoder/{core,plus}/src/*.cpp``
+and ``codec/common/src/*.cpp``, include dirs ``codec/api/wels``, ``codec/common/inc``,
+``codec/decoder/core/inc``, ``codec/decoder/plus/inc``, no ``-DX86_ASM`` / ``-DHAVE_NEON*``.
+Feed the decoder one NAL per ``DecodeFrameNoDelay`` call, then ``FlushFrame()`` to pull
+the finished picture.
+
+--------------------------------------------------------------------------------
+
 OpenH264
 ========
 OpenH264 is a codec library which supports H.264 encoding and decoding. It is suitable for use in real time applications such as WebRTC. See http://www.openh264.org/ for more details.

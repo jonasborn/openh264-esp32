@@ -32,6 +32,9 @@
 
 #include <stdlib.h>
 #include <string.h>
+#if defined(ESP_PLATFORM)
+#include "esp_heap_caps.h"
+#endif
 #include "memory_align.h"
 #include "macros.h"
 
@@ -69,7 +72,16 @@ void* WelsMalloc (const uint32_t kuiSize, const char* kpTag, const uint32_t kiAl
   const uint32_t kiActualRequestedSize   = kiTrialRequestedSize;
   const uint32_t kiPayloadSize          = kuiSize;
 
+#if defined(ESP_PLATFORM)
+  /* Keep openh264's ~2-4 MB of working buffers in PSRAM, off the small
+   * DMA-capable internal heap that WiFi needs. */
+  uint8_t* pBuf = (uint8_t*) heap_caps_malloc (kiActualRequestedSize,
+                                               MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (NULL == pBuf)
+    pBuf = (uint8_t*) malloc (kiActualRequestedSize);
+#else
   uint8_t* pBuf = (uint8_t*) malloc (kiActualRequestedSize);
+#endif
   if (NULL == pBuf)
     return NULL;
 
